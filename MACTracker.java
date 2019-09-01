@@ -37,7 +37,6 @@ import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.core.types.MacVlanPair;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.packet.Ethernet;
-import net.floodlightcontroller.packet.IPacket;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.routing.IRoutingService;
 import net.floodlightcontroller.topology.ITopologyService;
@@ -46,7 +45,6 @@ import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.learningswitch.ILearningSwitchService;
 import net.floodlightcontroller.core.internal.IOFSwitchService;
 import net.floodlightcontroller.statistics.IStatisticsService;
-import net.floodlightcontroller.statistics.StatisticsCollector;
 
 import java.io.*;
 import java.util.*;
@@ -61,7 +59,6 @@ import javax.net.ssl.SSLContext;
 import java.lang.Integer;
 import java.util.Random;
 
-// criar flows para o router
 
 public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearningSwitchService {
 	public static final Integer DEFAULT = 60;
@@ -73,7 +70,7 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 	protected IRoutingService routingEngineService;
 	protected ITopologyService topologyService;
 	protected IDeviceService deviceManagerService;
-	protected ILearningSwitchService ls;
+	protected ILearningSwitchService learningSwitch;
 	protected IStatisticsService iss;
 	protected static Logger logger;
 	protected Integer groupNumber = 1;
@@ -81,7 +78,6 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 	protected Map<DatapathId, SwitchInfo> macs;
 	protected Map<OFGroup, Group> groups;
 	protected Map<OFGroup, BenignGroup> benignGroups;
-	protected StatisticsCollector statistics;
 	protected Map<DatapathId, Integer> activeFlows;
 	protected List<BandwidthInfo> bandwidths;
 	protected Map<Integer, Integer> idss;
@@ -108,10 +104,9 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 	    routingEngineService = context.getServiceImpl(IRoutingService.class);
 	    topologyService = context.getServiceImpl(ITopologyService.class);
 	    deviceManagerService = context.getServiceImpl(IDeviceService.class);
-	    ls = context.getServiceImpl(ILearningSwitchService.class);
+	    learningSwitch = context.getServiceImpl(ILearningSwitchService.class);
 	    iss = context.getServiceImpl(IStatisticsService.class);
 	    logger = LoggerFactory.getLogger(MACTracker.class);
-	    this.statistics = new StatisticsCollector();
 	    this.groups = new ConcurrentHashMap<>();
 	    this.benignGroups = new ConcurrentHashMap<>();
 	    this.activeFlows = new ConcurrentHashMap<>();
@@ -204,32 +199,7 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 			   srcMac = eth.getSourceMACAddress();
 			   dstMac = eth.getDestinationMACAddress();
 			   
-			   /*
-			   if(isDrop == 0) {
-				   switches = switchService.getAllSwitchMap();
-				   Match match41 = myFactory.buildMatch()
-						   .setExact(MatchField.ETH_TYPE, EthType.IPv4)
-						   .setExact(MatchField.IPV4_SRC, IPv4Address.of("10.0.0.4"))
-						   .setExact(MatchField.IPV4_DST, IPv4Address.of("10.0.0.1"))
-						   .build();
-				   Match match52 = myFactory.buildMatch()
-						   .setExact(MatchField.ETH_TYPE, EthType.IPv4)
-						   .setExact(MatchField.IPV4_SRC, IPv4Address.of("10.0.0.5"))
-						   .setExact(MatchField.IPV4_DST, IPv4Address.of("10.0.0.2"))
-						   .build();
-				   Match match63 = myFactory.buildMatch()
-						   .setExact(MatchField.ETH_TYPE, EthType.IPv4)
-						   .setExact(MatchField.IPV4_SRC, IPv4Address.of("10.0.0.6"))
-						   .setExact(MatchField.IPV4_DST, IPv4Address.of("10.0.0.3"))
-						   .build();
-				   for(IOFSwitch sss: switches.values()) {
-					   sendFlowModInf(sss, match41, retorno, OFBufferId.NO_BUFFER);
-					   sendFlowModInf(sss, match52, retorno, OFBufferId.NO_BUFFER);
-					   sendFlowModInf(sss, match63, retorno, OFBufferId.NO_BUFFER);
-				   }
-				   isDrop = 1;
-			   }
-			   */
+
 			   for(OFGroup number: groups.keySet()) {
 				   if(groups.get(number).equals(srcIp, dstIp, protoType)) {
 					   if(groups.get(number).getIsActive() == true) {
@@ -246,21 +216,17 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 						   }
 						   
 						   ms = switchService.getActiveSwitch(bestSwitch);
-						   op = ls.getFromPortMap(ms, mac, null);
+						   op = learningSwitch.getFromPortMap(ms, mac, null);
 						   if (op == null) {
 							   return Command.CONTINUE;
 						   }
 						   
-						   switch(ms.getId().toString()) {
-							case "00:00:00:00:00:00:00:01":
-								sSwitch = "s1";
-								break;
-							case "00:00:00:00:00:00:00:02":
-								sSwitch = "s2";
-								break;
-							case "00:00:00:00:00:00:00:03":
-								sSwitch = "s3";
+						   for(DatapathId d: macs.keySet()) {
+							   if(ms.getId().equals(d)) {
+								   sSwitch = macs.get(d).getSSwitch();
+							   }
 						   }
+						   
 						   aux1.add(myFactory.actions().group(number));
 				   		   Match match1 = myFactory.buildMatch()
 									   .setExact(MatchField.ETH_TYPE, EthType.IPv4)
@@ -368,37 +334,36 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 			   }
 			   
 			   ms = switchService.getActiveSwitch(bestSwitch);
-			   op = ls.getFromPortMap(ms, mac, null);
+			   
+			   op = learningSwitch.getFromPortMap(ms, mac, null);
 			   if (op == null) {
 				   return Command.CONTINUE;
 			   }
 			   
-			   switch(ms.getId().toString()) {
-				case "00:00:00:00:00:00:00:01":
-					sSwitch = "s1";
-					break;
-				case "00:00:00:00:00:00:00:02":
-					sSwitch = "s2";
-					break;
-				case "00:00:00:00:00:00:00:03":
-					sSwitch = "s3";
+			   for(DatapathId d: macs.keySet()) {
+				   if(ms.getId().equals(d)) {
+					   sSwitch = macs.get(d).getSSwitch();
+				   }
 			   }
+			   
 			   Group group = new Group(srcIp, dstIp, protoType, macs.get(bestSwitch).getSSwitch(), ms, mac, op, ids, srcMac, dstMac);
 			   groups.put(OFGroup.of(groupNumber), group);
 			   sendGroupMod(ms, "add", OFGroup.of(groupNumber), op, mac);
-			   Match myMatch = myFactory.buildMatch()
+			   
+			   Match match = myFactory.buildMatch()
 					   .setExact(MatchField.ETH_TYPE, EthType.IPv4)
 					   .setExact(MatchField.IP_PROTO, protoType)
 					   .setExact(MatchField.IPV4_SRC, srcIp)
 					   .setExact(MatchField.IPV4_DST, dstIp)
 					   .build();
+			   
 			   actions.add(myFactory.actions().group(OFGroup.of(groupNumber)));
 			   groupNumber++;
 			   if(msg.getBufferId() != OFBufferId.NO_BUFFER) {
-				   sendFlowMod(ms, myMatch, actions, msg.getBufferId(), DEFAULT);
+				   sendFlowMod(ms, match, actions, msg.getBufferId(), DEFAULT);
 			   }
 			   else {
-				   sendFlowMod(ms, myMatch, actions, OFBufferId.NO_BUFFER, DEFAULT);
+				   sendFlowMod(ms, match, actions, OFBufferId.NO_BUFFER, DEFAULT);
 			   }
 			   
 			   idss.put(ids, idss.get(ids) + 1);
@@ -420,7 +385,7 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 			List<OFAction> list1 = new ArrayList<>();
 			List<OFAction> list2 = new ArrayList<>();
 			List<OFAction> list3 = new ArrayList<>();
-
+			
 			if(op != null) {
 				list1.add(myFactory.actions().output(OFPort.NORMAL, Integer.MAX_VALUE));
 				list2.add(myFactory.actions().setField(oxms.ethDst(mac)));
@@ -601,7 +566,7 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 
 		public DatapathId bestSwitch() {
 			Random ran = new Random();
-			Integer best = 999999;
+			Integer best = Integer.MAX_VALUE;
 			ArrayList<DatapathId> flows = new ArrayList<>();
 			for(DatapathId dp: activeFlows.keySet()) {
 				if(activeFlows.get(dp) < best) {
@@ -718,8 +683,6 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 									   sendFlowMod(groups.get(number).getSwitch(), match, actions2, OFBufferId.NO_BUFFER, PRIORITY_2);
 								   }
 								   else if(groups.get(number).getPriority() == 3) {
-									   //System.out.println(groups.get(number).getSrcIp() + " " + groups.get(number).getDstIp() + " " + groups.get(number).getProtoType());
-									   //System.out.println(IPv4Address.of(parts[1]) +  " " + IPv4Address.of(parts[2]) + " " + IpProtocol.of(Short.parseShort(parts[3])));
 									   List<OFAction> actions2 = new ArrayList<>();
 									   OFFactory myFactory = groups.get(number).getSwitch().getOFFactory();
 									   actions2.add(myFactory.actions().group(number));
@@ -834,7 +797,6 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 							if(!tabela.containsKey(g) && groups.get(g).getIsActive() == true) {
 								groups.get(g).setIsActive(false);
 								idss.put(groups.get(g).getIds(), idss.get(groups.get(g).getIds()) - 1);
-								activeFlows.put(groups.get(g).getSwitch().getId(), activeFlows.get(groups.get(g).getSwitch().getId()) - 1);
 								if(groups.get(g).getPriority() == 0) {
 									Group aux = groups.get(g);
 									benignGroups.put(g, new BenignGroup(aux.getSrcIp(), aux.getDstIp(), aux.getProtoType(), aux.getSwitch()));
@@ -880,7 +842,7 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 								}
 								
 								ms = switchService.getActiveSwitch(bestSwitch);
-								op = ls.getFromPortMap(ms, mac, null);
+								op = learningSwitch.getFromPortMap(ms, mac, null);
 								
 								Match match = myFactory.buildMatch()
 										.setExact(MatchField.ETH_TYPE, EthType.IPv4)
@@ -902,17 +864,14 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 									groups.get(number).setSwitch(ms);
 									groups.get(number).setMac(mac);
 									benignGroups.get(number).setSwitch(ms);
-									switch(ms.getId().toString()) {
-										case "00:00:00:00:00:00:00:01":
-											groups.get(number).setS_Switch("s1");
-											break;
-										case "00:00:00:00:00:00:00:02":
-											groups.get(number).setS_Switch("s2");
-											break;
-										case "00:00:00:00:00:00:00:03":
-											groups.get(number).setS_Switch("s3");
-											break;
+									
+									
+									for(DatapathId d: macs.keySet()) {
+										   if(ms.getId().equals(d)) {
+											   groups.get(number).setS_Switch(macs.get(d).getSSwitch());
+										   }
 									}
+									
 									sendFlowMod(ms, match, actions, OFBufferId.NO_BUFFER, DEFAULT);
 									groups.get(number).setIsActive(true);
 									groups.get(number).setIds(bestIds);
@@ -923,7 +882,7 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 									activeFlows.put(bestSwitch, activeFlows.get(bestSwitch) + 1);
 								}
 								try {
-									Thread.sleep(10 * DEFAULT + 10000); // 70 segundos
+									Thread.sleep(10 * DEFAULT + 10000);
 								} catch (InterruptedException e) {
 									e.printStackTrace();
 								}
@@ -935,3 +894,15 @@ public class MACTracker implements IOFMessageListener, IFloodlightModule, ILearn
 			}
 		}
 }
+
+
+
+
+
+
+
+
+
+
+
+
