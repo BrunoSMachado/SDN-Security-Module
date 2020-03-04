@@ -82,7 +82,6 @@ typedef struct _SpoAlertUnixSockData
 
 extern OptTreeNode *otn_tmp;
 
-
 static int alertsd;
 #ifndef WIN32
 static struct sockaddr_un alertaddr;
@@ -235,9 +234,6 @@ static void ParseAlertUnixSockArgs(char *args)
       */
  }
 
-
-
-
 /*
  * Function: OpenAlertSock
  *
@@ -297,8 +293,5 @@ static void CloseAlertSock(void)
         close(alertsd);
     }
 }
-
-
-
 
 #endif /* !WIN32 */

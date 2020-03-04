@@ -30,8 +30,7 @@ class Topologia(Topo):
 
         self.addLink(s1, s2)
         self.addLink(s2, s3)
-        # triangulo
-        #self.addLink(s3, s1)
+
         # links hosts
         self.addLink(s1, cliente1)
         self.addLink(s1, cliente2)
@@ -73,14 +72,12 @@ def run():
     servidor2.cmd('ifconfig servidor2-eth0 10.0.0.5 netmask 255.0.0.0 hw ether 00:00:00:00:00:05')
     servidor3.cmd('ifconfig servidor3-eth0 10.0.0.6 netmask 255.0.0.0 hw ether 00:00:00:00:00:06')
 
-    """
     ids1.cmd('snort -D -i ids1-eth0 -c /etc/snort/snort.conf -A unsock -l /tmp')
     ids1.cmd('snort -D -i ids1-eth1 -c /etc/snort/snort.conf -A unsock -l /tmp')
     ids1.cmd('snort -D -i ids1-eth2 -c /etc/snort/snort.conf -A unsock -l /tmp')
     ids2.cmd('snort -D -i ids2-eth0 -c /etc/snort/snort.conf -A unsock -l /tmp')
     ids2.cmd('snort -D -i ids2-eth1 -c /etc/snort/snort.conf -A unsock -l /tmp')
     ids2.cmd('snort -D -i ids2-eth2 -c /etc/snort/snort.conf -A unsock -l /tmp')
-    """
 
     net.start()
     CLI(net)
