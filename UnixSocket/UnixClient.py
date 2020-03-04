@@ -34,7 +34,7 @@ class SnortListener():
             print("{0} with support for TLS 1.3"
 		          .format(ssl.OPENSSL_VERSION))
         '''Open a client on Network Socket'''
-        CERTFILE = os.path.join(os.path.dirname(__file__), "certificate.pem")
+        CERTFILE = os.path.join(os.path.dirname(__file__), "cert.pem")
         context = context = ssl.SSLContext(ssl.PROTOCOL_TLS)
         context.load_cert_chain(CERTFILE)
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
